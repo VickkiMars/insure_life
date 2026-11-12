@@ -57,5 +57,42 @@ class TestRiskEnginePhase1(unittest.TestCase):
         self.assertIn("year1_claims_cost", first)
         self.assertIn("year1_high_risk_flag", first)
 
+class TestRiskEnginePhase2(unittest.TestCase):
+
+    def test_glm_and_classifier_convergence(self):
+        from src.risk_engine.models import ActuarialSpendGLM, CatastrophicRiskClassifier, RiskDecileCalibrator
+        from src.risk_engine.evaluator import calculate_gini, calculate_roc_auc, compute_decile_lift
+
+        np.random.seed(42)
+        N, D = 100, 10
+        X = np.random.randn(N, D)
+        X[:, 0] = 1.0
+        y_spend = np.random.exponential(5000, size=N)
+        y_hr = (y_spend > 10000).astype(int)
+
+        glm = ActuarialSpendGLM(l2_reg=1e-3)
+        glm.fit(X, y_spend)
+        preds = glm.predict(X)
+        self.assertEqual(len(preds), N)
+        self.assertTrue(np.all(preds > 0))
+
+        clf = CatastrophicRiskClassifier(l2_reg=1e-3)
+        clf.fit(X, y_hr)
+        probs = clf.predict_proba(X)
+        self.assertEqual(len(probs), N)
+        self.assertTrue(np.all((probs >= 0.0) & (probs <= 1.0)))
+
+        calibrator = RiskDecileCalibrator().fit(preds)
+        decile = calibrator.predict_decile(float(preds[0]))
+        self.assertTrue(1 <= decile <= 10)
+
+        # Test metrics
+        auc = calculate_roc_auc(y_hr, probs)
+        self.assertTrue(0.0 <= auc <= 1.0)
+
+        lift = compute_decile_lift(y_spend, preds)
+        self.assertEqual(len(lift), 10)
+        self.assertEqual(lift[-1]["decile"], 10)
+
 if __name__ == "__main__":
     unittest.main()
