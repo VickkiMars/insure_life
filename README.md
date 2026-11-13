@@ -163,3 +163,31 @@ python3 verify_data.py --db-path nigerian_hmo.db
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+---
+
+## 6. Day-0 Enrollee Risk Engine & Intake Scoring
+
+Predicts expected Year-1 claims cost, catastrophic hospital admission probability, risk tiering, and actionable underwriting recommendations at onboarding:
+
+### Training the Risk Model
+```bash
+python3 train_risk_model.py --db-path nigerian_hmo.db --out-weights models/risk_model_weights.json
+```
+
+### Scoring an Onboarding User in Real-Time
+```bash
+python3 predict_risk.py \
+  --age 28 \
+  --sex F \
+  --state Lagos \
+  --relationship PRINCIPAL \
+  --sector "Banking & Financial Services" \
+  --tier "Gold / Comprehensive" \
+  --copay 0.0
+```
+
+### JSON Mode (for API integration)
+```bash
+python3 predict_risk.py --age 52 --sex M --state Rivers --scheme "Informal / Voluntary Retail" --json
+```

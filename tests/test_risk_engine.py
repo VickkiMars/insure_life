@@ -94,5 +94,57 @@ class TestRiskEnginePhase2(unittest.TestCase):
         self.assertEqual(len(lift), 10)
         self.assertEqual(lift[-1]["decile"], 10)
 
+class TestRiskEnginePhase3(unittest.TestCase):
+
+    def test_underwriting_policy_rules(self):
+        from src.risk_engine.policy_rules import UnderwritingPolicyEngine
+
+        # Low risk corporate profile
+        action_low = UnderwritingPolicyEngine.evaluate(
+            expected_annual_spend_ngn=1500.0,
+            catastrophic_risk_prob=0.03,
+            decile=2,
+            scheme_type="Formal Sector Private"
+        )
+        self.assertEqual(action_low.risk_tier, RiskTier.TIER_1_LOW)
+        self.assertEqual(action_low.retail_premium_surcharge_pct, 0.0)
+        self.assertFalse(action_low.proactive_care_management_required)
+
+        # High risk retail profile
+        action_high = UnderwritingPolicyEngine.evaluate(
+            expected_annual_spend_ngn=18000.0,
+            catastrophic_risk_prob=0.35,
+            decile=10,
+            scheme_type="Informal / Voluntary Retail"
+        )
+        self.assertEqual(action_high.risk_tier, RiskTier.TIER_4_CRITICAL)
+        self.assertEqual(action_high.retail_premium_surcharge_pct, 35.0)
+        self.assertEqual(action_high.recommended_waiting_period_days, 90)
+        self.assertTrue(action_high.proactive_care_management_required)
+
+    def test_end_to_end_predictor_pipeline(self):
+        from src.risk_engine.pipeline import Day0RiskPredictor
+
+        predictor = Day0RiskPredictor.load("models/risk_model_weights.json")
+        intake = EnrolleeIntake(
+            enrollee_id="ENR-TEST-999",
+            age=45,
+            sex="M",
+            relationship="PRINCIPAL",
+            state="Lagos",
+            lga="Ikeja",
+            scheme_type="Formal Sector Private",
+            sector="Banking & Financial Services",
+            plan_tier="Gold / Comprehensive",
+            co_pay_pct=0.0,
+            pcp_level="Secondary"
+        )
+        result = predictor.predict_enrollee(intake)
+        self.assertEqual(result.enrollee_id, "ENR-TEST-999")
+        self.assertGreater(result.expected_annual_spend_ngn, 0.0)
+        self.assertTrue(0.0 <= result.catastrophic_risk_prob <= 1.0)
+        self.assertTrue(1 <= result.risk_decile <= 10)
+        self.assertIn(result.risk_tier, [RiskTier.TIER_1_LOW, RiskTier.TIER_2_MODERATE, RiskTier.TIER_3_HIGH, RiskTier.TIER_4_CRITICAL])
+
 if __name__ == "__main__":
     unittest.main()
